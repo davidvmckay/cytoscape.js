@@ -4,9 +4,9 @@
     for( var i = 0; i < json.length; i++ ){
       var context = json[i];
       var selector = context.selector;
-      var props = context.css;
+      var props = context.style || context.css;
 
-      style.selector(selector); // apply selector
+      style.selector( selector ); // apply selector
 
       for( var name in props ){
         var value = props[name];
@@ -42,7 +42,7 @@
   $$.styfn.json = function(){
     var json = [];
 
-    for( var i = 0; i < this.length; i++ ){
+    for( var i = this.defaultLength; i < this.length; i++ ){
       var cxt = this[i];
       var selector = cxt.selector;
       var props = cxt.properties;
@@ -55,7 +55,7 @@
 
       json.push({
         selector: !selector ? 'core' : selector.toString(),
-        css: css
+        style: css
       });
     }
 

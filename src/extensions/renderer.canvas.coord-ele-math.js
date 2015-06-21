@@ -1,9 +1,10 @@
 ;(function($$){ 'use strict';
 
   var CanvasRenderer = $$('renderer', 'canvas');
+  var CRp = CanvasRenderer.prototype;
 
   // Project mouse
-  CanvasRenderer.prototype.projectIntoViewport = function(clientX, clientY) {
+  CRp.projectIntoViewport = function(clientX, clientY) {
     var offsets = this.findContainerClientCoords();
     var offsetLeft = offsets[0];
     var offsetTop = offsets[1];
@@ -15,7 +16,7 @@
     return [x, y];
   };
 
-  CanvasRenderer.prototype.findContainerClientCoords = function() {
+  CRp.findContainerClientCoords = function() {
     var container = this.data.container;
 
     var bb = this.containerBB = this.containerBB || container.getBoundingClientRect();
@@ -23,12 +24,12 @@
     return [bb.left, bb.top, bb.right - bb.left, bb.bottom - bb.top];
   };
 
-  CanvasRenderer.prototype.invalidateContainerClientCoordsCache = function(){
+  CRp.invalidateContainerClientCoordsCache = function(){
     this.containerBB = null;
   };
 
   // Find nearest element
-  CanvasRenderer.prototype.findNearestElement = function(x, y, visibleElementsOnly){
+  CRp.findNearestElement = function(x, y, visibleElementsOnly){
     var self = this;
     var eles = this.getCachedZSortedEles();
     var near = [];
@@ -101,7 +102,7 @@
         return false;
       };
 
-      if (rs.edgeType === 'self') {
+      if (rs.edgeType === 'self' || rs.edgeType === 'compound') {
         if(
             (
               (inEdgeBB = $$.math.inBezierVicinity(x, y, rs.startX, rs.startY, rs.cp2ax, rs.cp2ay, rs.selfEdgeMidX, rs.selfEdgeMidY, widthSq))
@@ -224,7 +225,7 @@
   }; 
 
   // 'Give me everything from this box'
-  CanvasRenderer.prototype.getAllInBox = function(x1, y1, x2, y2) {
+  CRp.getAllInBox = function(x1, y1, x2, y2) {
     var nodes = this.getCachedNodes();
     var edges = this.getCachedEdges();
     var box = [];
@@ -338,7 +339,7 @@
    * @param node          a node
    * @return {number}     width of the node
    */
-  CanvasRenderer.prototype.getNodeWidth = function(node)
+  CRp.getNodeWidth = function(node)
   {
     return node.width();
   };
@@ -350,7 +351,7 @@
    * @param node          a node
    * @return {number}     width of the node
    */
-  CanvasRenderer.prototype.getNodeHeight = function(node)
+  CRp.getNodeHeight = function(node)
   {
     return node.height();
   };
@@ -362,7 +363,7 @@
    * @param node          a node
    * @return {String}     shape of the node
    */
-  CanvasRenderer.prototype.getNodeShape = function(node)
+  CRp.getNodeShape = function(node)
   {
     // TODO only allow rectangle for a compound node?
 //    if (node._private.style['width'].value == 'auto' ||
@@ -385,7 +386,7 @@
   };
 
 
-  CanvasRenderer.prototype.getNodePadding = function(node)
+  CRp.getNodePadding = function(node)
   {
     var left = node._private.style['padding-left'].pxValue;
     var right = node._private.style['padding-right'].pxValue;
@@ -418,13 +419,13 @@
       bottom : bottom};
   };
 
-  CanvasRenderer.prototype.zOrderSort = $$.Collection.zIndexSort;
+  CRp.zOrderSort = $$.Collection.zIndexSort;
 
-  CanvasRenderer.prototype.updateCachedZSortedEles = function(){
+  CRp.updateCachedZSortedEles = function(){
     this.getCachedZSortedEles( true );
   };
 
-  CanvasRenderer.prototype.getCachedZSortedEles = function( forceRecalc ){
+  CRp.getCachedZSortedEles = function( forceRecalc ){
     var lastNodes = this.lastZOrderCachedNodes;
     var lastEdges = this.lastZOrderCachedEdges;
     var nodes = this.getCachedNodes();
@@ -462,7 +463,7 @@
     return eles;
   };
 
-  CanvasRenderer.prototype.projectBezier = function(edge){
+  CRp.projectBezier = function(edge){
     var qbezierAt = $$.math.qbezierAt;
     var rs = edge._private.rscratch;
     var bpts = edge._private.rstyle.bezierPts = [];
@@ -490,7 +491,7 @@
 
       bpts.push( mid );
 
-      if( rs.edgeType === 'self' ){
+      if( rs.edgeType === 'self' || rs.edgeType === 'compound' ){
         rs.midX = rs.selfEdgeMidX;
         rs.midY = rs.selfEdgeMidY;
       } else {
@@ -522,7 +523,7 @@
     }
   };
 
-  CanvasRenderer.prototype.recalculateNodeLabelProjection = function( node ){
+  CRp.recalculateNodeLabelProjection = function( node ){ 
     var content = node._private.style['content'].strValue;
     if( !content || content.match(/^\s+$/) ){ return; }
 
@@ -569,14 +570,16 @@
     this.applyLabelDimensions( node );
   };
 
-  CanvasRenderer.prototype.recalculateEdgeLabelProjection = function( edge ){
+  CRp.recalculateEdgeLabelProjection = function( edge ){
     var content = edge._private.style['content'].strValue;
     if( !content || content.match(/^\s+$/) ){ return; }
 
     var textX, textY;  
     var edgeCenterX, edgeCenterY;
-    var rs = edge._private.rscratch;
-    var rstyle = edge._private.rstyle;
+    var _p = edge._private;
+    var rs = _p.rscratch;
+    //var style = _p.style;
+    var rstyle = _p.rstyle;
     
     if (rs.edgeType == 'self') {
       edgeCenterX = rs.selfEdgeMidX;
@@ -588,11 +591,14 @@
       edgeCenterX = $$.math.qbezierAt( rs.startX, rs.cp2x, rs.endX, 0.5 );
       edgeCenterY = $$.math.qbezierAt( rs.startY, rs.cp2y, rs.endY, 0.5 );
     } else if (rs.edgeType == 'haystack') {
-      var srcPos = edge._private.source._private.position;
-      var tgtPos = edge._private.target._private.position;
+      // var src = _p.source;
+      // var tgt = _p.target;
+      // var srcPos = src._private.position;
+      // var tgtPos = tgt._private.position;
+      var pts = rs.haystackPts;
 
-      edgeCenterX = (srcPos.x + rs.source.x + tgtPos.x + rs.target.x)/2;
-      edgeCenterY = (srcPos.y + rs.source.y + tgtPos.y + rs.target.y)/2;
+      edgeCenterX = ( pts[0] + pts[2] )/2;
+      edgeCenterY = ( pts[1] + pts[3] )/2;
     }
     
     textX = edgeCenterX;
@@ -607,7 +613,7 @@
     this.applyLabelDimensions( edge );
   };
 
-  CanvasRenderer.prototype.applyLabelDimensions = function( ele ){
+  CRp.applyLabelDimensions = function( ele ){
     var rs = ele._private.rscratch;
     var rstyle = ele._private.rstyle;
 
@@ -621,10 +627,11 @@
     rs.labelHeight = labelDims.height;
   };
 
-  CanvasRenderer.prototype.getLabelText = function( ele ){
+  CRp.getLabelText = function( ele ){ 
     var style = ele._private.style;
     var text = ele._private.style['content'].strValue;
     var textTransform = style['text-transform'].value;
+    var rscratch = ele._private.rscratch;
     
     if (textTransform == 'none') {
     } else if (textTransform == 'uppercase') {
@@ -633,10 +640,63 @@
       text = text.toLowerCase();
     }
 
+    if( style['text-wrap'].value === 'wrap' ){
+      //console.log('wrap'); 
+      
+      // save recalc if the label is the same as before
+      if( rscratch.labelWrapKey === rscratch.labelKey ){ 
+        // console.log('wrap cache hit');
+        return rscratch.labelWrapCachedText;
+      }
+      // console.log('wrap cache miss');
+
+      var lines = text.split('\n');
+      var maxW = style['text-max-width'].pxValue;
+      var wrappedLines = [];
+
+      for( var l = 0; l < lines.length; l++ ){
+        var line = lines[l];
+        var lineDims = this.calculateLabelDimensions( ele, line, 'line=' + line );
+        var lineW = lineDims.width;
+
+        if( lineW > maxW ){ // line is too long
+          var words = line.split(/\s+/); // NB: assume collapsed whitespace into single space
+          var subline = '';
+
+          for( var w = 0; w < words.length; w++ ){
+            var word = words[w];
+            var testLine = subline.length === 0 ? word : subline + ' ' + word;
+            var testDims = this.calculateLabelDimensions( ele, testLine, 'testLine=' + testLine );
+            var testW = testDims.width;
+
+            if( testW <= maxW ){ // word fits on current line
+              subline += word + ' ';
+            } else { // word starts new line
+              wrappedLines.push( subline );
+              subline = word + ' ';
+            }
+          }
+
+          // if there's remaining text, put it in a wrapped line
+          if( !subline.match(/^\s+$/) ){
+            wrappedLines.push( subline );
+          }
+        } else { // line is already short enough
+          wrappedLines.push( line );
+        }
+      } // for
+
+      rscratch.labelWrapCachedLines = wrappedLines;
+      rscratch.labelWrapCachedText = text = wrappedLines.join('\n');
+      rscratch.labelWrapKey = rscratch.labelKey;
+
+      // console.log(text)
+    } // if wrap
+
     return text;
   };
 
-  CanvasRenderer.prototype.calculateLabelDimensions = function( ele, text ){
+  CRp.calculateLabelDimensions = function( ele, text, extraKey ){
     var r = this;
     var style = ele._private.style;
     var fStyle = style['font-style'].strValue;
@@ -646,6 +706,11 @@
     var weight = style['font-weight'].strValue;
 
     var cacheKey = ele._private.labelKey;
+
+    if( extraKey ){
+      cacheKey += '$@$' + extraKey;
+    }
+
     var cache = r.labelDimCache || (r.labelDimCache = {});
 
     if( cache[cacheKey] ){
@@ -678,6 +743,12 @@
     ds.padding = '0';
     ds.lineHeight = '1';
 
+    if( style['text-wrap'].value === 'wrap' ){
+      ds.whiteSpace = 'pre'; // so newlines are taken into account
+    } else {
+      ds.whiteSpace = 'normal';
+    }
+
     // put label content in div
     div.textContent = text;
 
@@ -689,7 +760,7 @@
     return cache[cacheKey];
   };  
 
-  CanvasRenderer.prototype.recalculateRenderedStyle = function( eles ){
+  CRp.recalculateRenderedStyle = function( eles ){
     var edges = [];
     var nodes = [];
     var handledEdge = {};
@@ -697,6 +768,7 @@
     for( var i = 0; i < eles.length; i++ ){
       var ele = eles[i];
       var _p = ele._private;
+      var style = _p.style;
       var rs = _p.rscratch;
       var rstyle = _p.rstyle;
       var id = _p.data.id;
@@ -707,13 +779,17 @@
       if( ele._private.group === 'nodes' ){
         var pos = _p.position;
         var posSame = rstyle.nodeX != null && rstyle.nodeY != null && pos.x === rstyle.nodeX && pos.y === rstyle.nodeY;
+        var wSame = rstyle.nodeW != null && rstyle.nodeW === style['width'].pxValue;
+        var hSame = rstyle.nodeH != null && rstyle.nodeH === style['height'].pxValue;
 
-        if( !posSame || !styleSame ){
+        if( !posSame || !styleSame || !wSame || !hSame ){
           nodes.push( ele );
         }
 
         rstyle.nodeX = pos.x;
         rstyle.nodeY = pos.y;
+        rstyle.nodeW = style['width'].pxValue;
+        rstyle.nodeH = style['height'].pxValue;
       } else { // edges
 
         var srcPos = ele._private.source._private.position;
@@ -763,7 +839,7 @@
     this.recalculateLabelProjections( nodes, edges );
   };
 
-  CanvasRenderer.prototype.recalculateLabelProjections = function( nodes, edges ){
+  CRp.recalculateLabelProjections = function( nodes, edges ){
     for( var i = 0; i < nodes.length; i++ ){
       this.recalculateNodeLabelProjection( nodes[i] );
     }
@@ -773,15 +849,17 @@
     }
   };
 
-  CanvasRenderer.prototype.recalculateEdgeProjections = function( edges ){
+  CRp.recalculateEdgeProjections = function( edges ){
     this.findEdgeControlPoints( edges );
   };
 
 
   // Find edge control points
-  CanvasRenderer.prototype.findEdgeControlPoints = function(edges) {
+  CRp.findEdgeControlPoints = function(edges) {
     if( !edges || edges.length === 0 ){ return; }
 
+    var cy = this.data.cy;
+    var hasCompounds = cy.hasCompoundNodes();
     var hashTable = {};
     var pairIds = [];
     var haystackEdges = [];
@@ -968,6 +1046,9 @@
         var tgtH1 = rs.lastTgtCtlPtH;
         var tgtH2 = tgt.outerHeight();
 
+        var width1 = rs.lastW;
+        var width2 = eStyle['control-point-step-size'].pxValue;
+
         if( badBezier ){
           rs.badBezier = true;
         } else {
@@ -976,6 +1057,7 @@
 
         if( srcX1 === srcX2 && srcY1 === srcY2 && srcW1 === srcW2 && srcH1 === srcH2
         &&  tgtX1 === tgtX2 && tgtY1 === tgtY2 && tgtW1 === tgtW2 && tgtH1 === tgtH2
+        &&  width1 === width2
         &&  ((edgeIndex1 === edgeIndex2 && numEdges1 === numEdges2) || edgeIsUnbundled) ){
           // console.log('edge ctrl pt cache HIT')
           continue; // then the control points haven't changed and we can skip calculating them
@@ -990,6 +1072,7 @@
           rs.lastTgtCtlPtH = tgtH2;
           rs.lastEdgeIndex = edgeIndex2;
           rs.lastNumEdges = numEdges2;
+          rs.lastWidth = width2;
           // console.log('edge ctrl pt cache MISS')
         }
 
@@ -1010,12 +1093,59 @@
           rs.cp2ax = srcPos.x;
           rs.cp2ay = srcPos.y - (1 + Math.pow(srcH, 1.12) / 100) * loopDist * (j / 3 + 1);
           
-          rs.cp2cx = src._private.position.x - (1 + Math.pow(srcW, 1.12) / 100) * loopDist * (j / 3 + 1);
+          rs.cp2cx = srcPos.x - (1 + Math.pow(srcW, 1.12) / 100) * loopDist * (j / 3 + 1);
           rs.cp2cy = srcPos.y;
           
           rs.selfEdgeMidX = (rs.cp2ax + rs.cp2cx) / 2.0;
           rs.selfEdgeMidY = (rs.cp2ay + rs.cp2cy) / 2.0;
+        
+        // Compound edge
+        } else if(
+          hasCompounds &&
+          ( src.isParent() || src.isChild() || tgt.isParent() || tgt.isChild() ) &&
+          ( src.parents().anySame(tgt) || tgt.parents().anySame(src) )
+        ){
+
+          rs.edgeType = 'compound';
+
+          // because the line approximation doesn't apply for compound beziers
+          // (loop/self edges are already elided b/c of cheap src==tgt check)
+          rs.badBezier = false;
+
+          var j = i;
+          var loopDist = stepSize;
+
+          if( edgeIsUnbundled ){
+            j = 0;
+            loopDist = stepDist;
+          }
+
           
+          var loopW = 50;
+
+          var loopaPos = {
+            x: srcPos.x - srcW/2,
+            y: srcPos.y - srcH/2
+          };
+
+          var loopbPos = {
+            x: tgtPos.x - tgtW/2,
+            y: tgtPos.y - tgtH/2
+          };
+
+          var minCompoundStretch = 1;
+
+          rs.cp2ax = loopaPos.x;
+          rs.compoundStretchA = Math.max( minCompoundStretch, Math.log(srcW * 0.01) ); // avoids cases with impossible beziers
+          rs.cp2ay = loopaPos.y - (1 + Math.pow(loopW, 1.12) / 100) * loopDist * (j / 3 + 1) * rs.compoundStretchA;
+          
+          rs.compoundStretchB = Math.max( minCompoundStretch, Math.log(tgtW * 0.01) ); // avoids cases with impossible beziers
+          rs.cp2cx = loopbPos.x - (1 + Math.pow(loopW, 1.12) / 100) * loopDist * (j / 3 + 1) * rs.compoundStretchB;
+          rs.cp2cy = loopbPos.y;
+          
+          rs.selfEdgeMidX = (rs.cp2ax + rs.cp2cx) / 2.0;
+          rs.selfEdgeMidY = (rs.cp2ay + rs.cp2cy) / 2.0;
+
         // Straight edge
         } else if (pairEdges.length % 2 === 1
           && i === Math.floor(pairEdges.length / 2)
@@ -1168,13 +1298,16 @@
 
         // project the edge into rstyle
         this.projectBezier( edge );
+        this.recalculateEdgeLabelProjection( edge );
 
       }
     }
       
     for( var i = 0; i < haystackEdges.length; i++ ){
       var edge = haystackEdges[i];
-      var rscratch = edge._private.rscratch;
+      var _p = edge._private;
+      var rscratch = _p.rscratch;
+      var rs = rscratch;
 
       if( !rscratch.haystack ){
         var angle = Math.random() * 2 * Math.PI;
@@ -1191,15 +1324,37 @@
           y: Math.sin(angle)
         };
 
-        rscratch.edgeType = 'haystack';
-        rscratch.haystack = true;
-      }  
+      }
+
+      var src = _p.source;
+      var tgt = _p.target;
+      var srcPos = src._private.position;
+      var tgtPos = tgt._private.position;
+      var srcW = src.width();
+      var tgtW = tgt.width();
+      var srcH = src.height();
+      var tgtH = tgt.height();
+      var radius = style['haystack-radius'].value;
+      var halfRadius = radius/2; // b/c have to half width/height
+
+      rs.haystackPts = [
+        rs.source.x * srcW * halfRadius + srcPos.x,
+        rs.source.y * srcH * halfRadius + srcPos.y,
+        rs.target.x * tgtW * halfRadius + tgtPos.x,
+        rs.target.y * tgtH * halfRadius + tgtPos.y
+      ];
+
+      // always override as haystack in case set to different type previously
+      rscratch.edgeType = 'haystack';
+      rscratch.haystack = true;
+
+      this.recalculateEdgeLabelProjection( edge );
     }
 
     return hashTable;
   };
 
-  CanvasRenderer.prototype.findEndpoints = function(edge) {
+  CRp.findEndpoints = function(edge) {
     var intersect;
 
     var source = edge.source()[0];
@@ -1213,7 +1368,7 @@
 
     var rs = edge._private.rscratch;
     
-    if (edge._private.rscratch.edgeType == 'self') {
+    if (rs.edgeType == 'self' || rs.edgeType == 'compound') {
       
       var cp = [rs.cp2cx, rs.cp2cy];
       
@@ -1275,7 +1430,7 @@
         
       if (intersect.length === 0) {
         rs.noArrowPlacement = true;
-  //      return;
+        // return;
       } else {
         rs.noArrowPlacement = false;
       }
@@ -1304,7 +1459,7 @@
       
       if (intersect.length === 0) {
         rs.noArrowPlacement = true;
-  //      return;
+       // return;
       } else {
         rs.noArrowPlacement = false;
       }
@@ -1326,6 +1481,12 @@
       
       rs.arrowStartX = arrowStart[0];
       rs.arrowStartY = arrowStart[1];
+      
+      if( !$$.is.number(rs.startX) || !$$.is.number(rs.startY) || !$$.is.number(rs.endX) || !$$.is.number(rs.endY) ){
+        rs.badLine = true;
+      } else {
+        rs.badLine = false;
+      }
             
     } else if (rs.edgeType == 'bezier') {
       // if( window.badArrow) debugger;
@@ -1396,7 +1557,7 @@
   };
 
   // Find adjacent edges
-  CanvasRenderer.prototype.findEdges = function(nodeSet) {
+  CRp.findEdges = function(nodeSet) {
     
     var edges = this.getCachedEdges();
     
@@ -1418,7 +1579,7 @@
     return adjacentEdges;
   };
 
-  CanvasRenderer.prototype.getArrowWidth = CanvasRenderer.prototype.getArrowHeight = function(edgeWidth) {
+  CRp.getArrowWidth = CRp.getArrowHeight = function(edgeWidth) {
     var cache = this.arrowWidthCache = this.arrowWidthCache || {};
 
     var cachedVal = cache[edgeWidth];

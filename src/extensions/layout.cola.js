@@ -47,6 +47,8 @@
   ColaLayout.prototype.run = function(){
     var layout = this;
     var options = this.options;
+    
+    layout.manuallyStopped = false;
 
     $$.util.require('cola', function(cola){
 
@@ -77,22 +79,32 @@
           var node = nodes[i];
           var scratch = node._private.scratch.cola;
 
-          x.min = Math.min( x.min, scratch.x );
-          x.max = Math.max( x.max, scratch.x );
+          x.min = Math.min( x.min, scratch.x || 0 );
+          x.max = Math.max( x.max, scratch.x || 0 );
 
-          y.min = Math.min( y.min, scratch.y );
-          y.max = Math.max( y.max, scratch.y );
+          y.min = Math.min( y.min, scratch.y || 0 );
+          y.max = Math.max( y.max, scratch.y || 0 );
         }
 
         nodes.positions(function(i, node){
-          var pos = node._private.position;
           var scratch = node._private.scratch.cola;
+          var retPos;
 
-          if( !node.grabbed() ){
-            pos.x = bb.x1 + scratch.x - x.min;
-            pos.y = bb.y1 + scratch.y - y.min;
+          if( !node.grabbed() && !node.isParent() ){
+            retPos = {
+              x: bb.x1 + scratch.x - x.min,
+              y: bb.y1 + scratch.y - y.min
+            };
+
+            if( !$$.is.number(retPos.x) || !$$.is.number(retPos.y) ){
+              retPos = undefined;
+            }
           }
+
+          return retPos;
         });
+
+        nodes.updateCompoundBounds(); // because the way this layout sets positions is buggy for some reason; ref #878
 
         if( !ready ){
           onReady();
@@ -105,8 +117,6 @@
       };
 
       var onDone = function(){
-        layout.manuallyStopped = false;
-
         if( options.ungrabifyWhileSimulating ){
           grabbableNodes.grabify();
         }
@@ -135,7 +145,7 @@
         ticksPerFrame = Math.max( 1, ticksPerFrame ); // at least 1
       }
 
-      var adaptor = cola.adaptor({
+      var adaptor = layout.adaptor = cola.adaptor({
         trigger: function( e ){ // on sim event
           switch( e.type ){
             case 'tick':
@@ -146,7 +156,7 @@
 
             case 'end': 
               updateNodePositions();
-              if( !options.infinite || layout.manuallyStopped ){ onDone(); }           
+              if( !options.infinite ){ onDone(); }           
               break;
           }
         },
@@ -155,6 +165,12 @@
           var skip = 0;
 
           var inftick = function(){
+            if( layout.manuallyStopped ){
+              onDone();
+              
+              return true;
+            }
+            
             var ret = tick();
 
             if( ret && options.infinite ){ // resume layout if done
@@ -168,11 +184,11 @@
             var ret;
 
             // skip ticks to slow down layout for debugging
-            var thisSkip = skip;
-            skip = (skip + 1) % tickSkip;
-            if( thisSkip !== 0 ){
-              return false;
-            }
+            // var thisSkip = skip;
+            // skip = (skip + 1) % tickSkip;
+            // if( thisSkip !== 0 ){
+            //   return false;
+            // }
 
             for( var i = 0; i < ticksPerFrame && !ret; i++ ){
               ret = ret || inftick(); // pick up true ret vals => sim done
@@ -196,7 +212,7 @@
 
         on: function( type, listener ){}, // dummy; not needed
 
-        drag: function(){} // TODO
+        drag: function(){} // not needed for our case
       });
       layout.adaptor = adaptor;
 
@@ -324,7 +340,7 @@
         node._private.scratch.cola = {
           index: i,
 
-          leaves: node.children().stdFilter(function( child ){
+          leaves: node.descendants().stdFilter(function( child ){
             return !child.isParent();
           }).map(function( child ){
             return child[0]._private.scratch.cola.index;
@@ -333,7 +349,7 @@
 
         return node;
       }).map(function( node ){ // add subgroups
-        node._private.scratch.cola.groups = node.children().stdFilter(function( child ){
+        node._private.scratch.cola.groups = node.descendants().stdFilter(function( child ){
           return child.isParent();
         }).map(function( child ){
           return child._private.scratch.cola.index;
@@ -416,17 +432,19 @@
         adaptor.flowLayout( flow.axis , flow.minSeparation );
       }
 
+      layout.trigger({ type: 'layoutstart', layout: layout });
+
       adaptor
         .avoidOverlaps( options.avoidOverlap )
         .handleDisconnected( options.handleDisconnected )
         .start( options.unconstrIter, options.userConstIter, options.allConstIter)
       ;
 
-      layout.trigger({ type: 'layoutstart', layout: layout });
-
       if( !options.infinite ){
         setTimeout(function(){
-          adaptor.stop();
+          if( !layout.manuallyStopped ){
+            adaptor.stop();
+          }
         }, options.maxSimulationTime);
       }
 
